@@ -1,0 +1,617 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Simple EC2 instance stack
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Workload Identity
+        Parameters:
+          - Owner
+          - Environment
+          - InstanceName
+          - Application
+          - CostCenter
+      - Label:
+          default: Compute Settings
+        Parameters:
+          - Tenancy
+          - KeyName
+          - ImageId
+          - RootVolumeSize
+      - Label:
+          default: Network Settings
+        Parameters:
+          - SubnetExportNames
+          - PreferredSubnetIndex
+          - SshCidr
+      - Label:
+          default: Optional Features
+        Parameters:
+          - EnableMonitoring
+          - CreateBackupResources
+          #- CreateInstanceRole
+      - Label:
+          default: Optional Input
+        Parameters:
+          - NestedStackTemplateUrl
+          - EnableNestedStackExample
+          - CustomResourceServiceToken
+          - EnableCustomResourceExample
+    ParameterLabels:
+      Owner:
+        default: Owner Tag Value
+      InstanceName:
+        default: EC2 Name Prefix
+      Environment:
+        default: Use Environment
+      Application:
+        default: Application Name
+      CostCenter:
+        default: Cost Center
+      Tenancy:
+        default: EC2 Tenancy
+      KeyName:
+        default: EC2 Key Pair
+      ImageId:
+        default: AMI from Public SSM Parameter
+      RootVolumeSize:
+        default: Root Volume Size (GiB)
+      SubnetExportNames:
+        default: Export Names for Candidate Subnets
+      PreferredSubnetIndex:
+        default: Selected Subnet Index
+      SshCidr:
+        default: SSH CIDR Range
+      CreateBackupResources:
+        default: Create BackUp Example
+      # CreateInstanceRole:
+      #   default: Create IAM Role / Instance Profile
+      NestedStackTemplateUrl:
+        default: Nested Stack Template URL
+      EnableNestedStackExample:
+        default: Enable Nested Stack Example
+      CustomResourceServiceToken:
+        default: Custom Resource Lambda ARN
+      EnableCustomResourceExample:
+        default: Enable Custom Resource Example
+
+Parameters:
+  Owner:
+    Type: String
+    Default: platform
+    Description: Owner tag applied to created resources.
+
+  InstanceName:
+    Type: String
+    Default: simple-visal-ec2
+    AllowedPattern: "^[a-z][a-z0-9-]{2,24}$"
+    ConstraintDescription: Use 3-25 lowercase, numbers, hyphens, starting with a letter
+    MinLength: 3
+    MaxLength: 25
+    Description: Name tag for the EC2 instance.
+
+  RootVolumeSize:
+    Type: Number
+    Default: 8
+    MinValue: 8
+    MaxValue: 30
+
+  Application:
+    Type: String
+    Default: training-web
+    AllowedPattern: '^[a-z][a-z0-9-]{2,20}$'
+    ConstraintDescription: Use 3-21 lowercase letters, numbers, or hyphens, starting with a letter.
+    MinLength: 3
+    MaxLength: 21
+    Description: Application tag and workload identifier.
+
+  CostCenter:
+    Type: String
+    Default: ac-1001
+    AllowedPattern: '^ac-[0-9]{4}$'
+    ConstraintDescription: CostCenter must match the format ac-1234.
+    MinLength: 7
+    MaxLength: 7
+    Description: Cost center tag often required by SCP or budget controls.
+
+  EnableMonitoring:
+    Type: String
+    Default: false
+    AllowedValues:
+      - "true"
+      - "false"
+
+  Environment:
+    Type: String
+    Default: Dev
+    AllowedValues:
+      - Prod
+      - Test
+      - Dev
+
+  CreateBackupResources:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: BackUp Production resources based on the rules
+
+  # CreateInstanceRole:
+  #   Type: String
+  #   Default: "true"
+  #   AllowedValues:
+  #     - "true"
+  #     - "false"
+  #   Description: Create an instance role and profile for Systems Manager access.
+
+  # InstanceType:
+  #   Type: String
+  #   Default: t3.micro
+  #   Description: EC2 instance type.
+
+  EnableNestedStackExample:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Optional nested stack example. Disabled by default to keep the base stack self-contained.
+
+  NestedStackTemplateUrl:
+    Type: String
+    Default: https://s3.amazonaws.com/cloudformation-templates-us-east-1/S3_Bucket.template
+    Description: Public template URL used if the nested stack example is enabled.
+
+  SubnetExportNames:
+    Type: String
+    Default: webSubnetAZ1SubnetId,webSubnetAZ2SubnetId,webSubnetAZ3SubnetId
+    AllowedPattern: "^[A-Za-z0-9,-]+$"
+    ConstraintDescription: Provide comma-separated CloudFormation export names only.
+    Description: Candidate subnet export names used with Fn::Split and Fn::Select.
+
+  PreferredSubnetIndex:
+    Type: Number
+    Default: 1
+    MinValue: 0
+    MaxValue: 2
+    Description: Zero-based index of the subnet export name to import.
+
+  Tenancy:
+    Type: String
+    Default: default
+    AllowedValues:
+      - default
+      - dedicated
+    Description: EC2 tenancy for the launched instance.
+
+  ImageId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: SSM parameter path for the AMI to launch.
+
+  KeyName:
+    Type: String
+    Default: ""
+    Description: Optional EC2 key pair name for SSH access.
+
+  SshCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR block allowed to SSH to the instance.
+
+  CustomResourceServiceToken:
+    Type: String
+    Default: ""
+    Description: Lambda ARN used as the ServiceToken for the custom resource example.
+
+  EnableCustomResourceExample:
+    Type: String
+    Default: "false"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Optional custom resource example. Disabled by default.
+
+
+Conditions:
+  HasKeyName:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: KeyName
+          - ""
+
+  MonitoringEnabled:
+    Fn::Equals:
+      - Ref: EnableMonitoring
+      - true
+
+  CreateBackupExampleResources:
+    Fn::And:
+      - Fn::Equals:
+          - Ref: CreateBackupResources
+          - "true"
+      - Fn::Equals:
+          - Ref: Environment
+          - Prod
+
+  # UseInstanceRole:
+  #   Fn::Equals:
+  #     - Ref: CreateInstanceRole
+  #     - "true"
+
+  UseNestedStackExample:
+    Fn::Equals:
+      - Ref: EnableNestedStackExample
+      - "true"
+
+  UseCustomResourceExample:
+    Fn::Equals:
+      - Ref: EnableCustomResourceExample
+      - "true"
+
+Resources:
+  # TrainingAppSecret:
+  #   Type: AWS::SecretsManager::Secret
+  #   DeletionPolicy: Retain
+  #   UpdateReplacePolicy: Retain
+  #   Properties:
+  #     Description: Dynamic reference example used by the training EC2 bootstrap.
+  #     GenerateSecretString:
+  #       SecretStringTemplate: '{"username":"training-app"}'
+  #       GenerateStringKey: password
+  #       ExcludePunctuation: true
+  #     Tags:
+  #       - Key: Name
+  #         Value:
+  #           Fn::Sub: ${AWS::StackName}-training-secret
+  #       - Key: ManagedBy
+  #         Value: CloudFormation
+
+  # TrainingConfigurationParameter:
+  #   Type: AWS::SSM::Parameter
+  #   Properties:
+  #     Name:
+  #       Fn::Sub: /training/${AWS::StackName}/application-mode
+  #     Type: String
+  #     Value:
+  #       Fn::FindInMap:
+  #         - RegionToInstanceType
+  #         - Ref: AWS::Region
+  #         - InstanceType
+  #     Description: Example Parameter Store value created by the template.
+  #     Tags:
+  #       Environment:
+  #         Ref: Environment
+  #       Application:
+  #         Ref: Application
+  #       ManagedBy: CloudFormation
+
+  # InstanceRole:
+  #   Type: AWS::IAM::Role
+  #   Condition: UseInstanceRole
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: "2012-10-17"
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service:
+  #               - ec2.amazonaws.com
+  #           Action:
+  #             - sts:AssumeRole
+  #     ManagedPolicyArns:
+  #       - Fn::Sub: arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore
+  #     Policies:
+  #       - PolicyName: CloudFormationSignalPolicy
+  #         PolicyDocument:
+  #           Version: "2012-10-17"
+  #           Statement:
+  #             - Effect: Allow
+  #               Action:
+  #                 - cloudformation:DescribeStackResource
+  #                 - cloudformation:SignalResource
+  #               Resource: "*"
+  #     Tags:
+  #       - Key: Name
+  #         Value:
+  #           Fn::Sub: ${AWS::StackName}-instance-role
+  #       - Key: Owner
+  #         Value:
+  #           Ref: Owner
+  #       - Key: Environment
+  #         Value:
+  #           Ref: Environment
+  #       - Key: ManagedBy
+  #         Value: CloudFormation
+  #       - Key: StackName
+  #         Value:
+  #           Ref: AWS::StackName
+
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow SSH access to the EC2 instance
+      VpcId:
+        Fn::ImportValue: VisalVPCId
+      SecurityGroupIngress:
+        - Description: SSH access
+          IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp:
+            Ref: SshCidr
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: ${InstanceName}-sg
+        - Key: Owner
+          Value:
+            Ref: Owner
+
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    DependsOn:
+      - InstanceSecurityGroup
+      # - TrainingConfigurationParameter
+    # Metadata:
+    #   AWS::CloudFormation::Init:
+    #     configSets:
+    #       default:
+    #         - base
+    #         - application
+    #     base:
+    #       packages:
+    #         yum:
+    #           httpd: []
+    #       files:
+    #         /etc/cfn/training-info.txt:
+    #           content:
+    #             Fn::Sub:
+    #               - |
+    #                 StackName=${AWS::StackName}
+    #                 Environment=${Environment}
+    #                 Owner=${Owner}
+    #                 CostCenter=${CostCenter}
+    #                 Region=${AWS::Region}
+    #                 AccountId=${AWS::AccountId}
+    #               - MappedInstanceType:
+    #                   Fn::FindInMap:
+    #                     - RegionToInstanceType
+    #                     - Ref: AWS::Region
+    #                     - InstanceType
+    #           mode: "000644"
+    #           owner: root
+    #           group: root
+    #     application:
+    #       files:
+    #         /var/www/html/index.html:
+    #           content:
+    #             Fn::Sub:
+    #               - |
+    #                 <html>
+    #                 <body>
+    #                 <p>Environment: ${Environment}</p>
+    #                 <p>Stack: ${AWS::StackName}</p>
+    #                 <p>Stack ID: ${AWS::StackId}</p>
+    #                 <p>Account: ${AWS::AccountId}</p>
+    #                 <p>Region: ${AWS::Region}</p>
+    #                 <p>Partition: ${AWS::Partition}</p>
+    #                 <p>URL Suffix: ${AWS::URLSuffix}</p>
+    #                 </body>
+    #                 </html>
+    #               - MappedInstanceType:
+    #                   Fn::FindInMap:
+    #                     - RegionToInstanceType
+    #                     - Ref: AWS::Region
+    #                     - InstanceType
+    #                 # ConfigParameterName:
+    #                 #   Ref: TrainingConfigurationParameter
+    #           mode: "000644"
+    #           owner: root
+    #           group: root
+    #       commands:
+    #         01-enable-httpd:
+    #           command: systemctl enable httpd
+    #         02-restart-httpd:
+    #           command: systemctl restart httpd
+    # CreationPolicy:
+    #   ResourceSignal:
+    #     Count: 1
+    #     Timeout: PT15M
+    Properties:
+      ImageId:
+        Ref: ImageId
+      InstanceType:
+        Fn::FindInMap:
+          - RegionToInstanceType
+          - Ref: AWS::Region
+          - InstanceType
+      Tenancy:
+        Ref: Tenancy
+      KeyName:
+        Fn::If:
+          - HasKeyName
+          - Ref: KeyName
+          - Ref: AWS::NoValue
+      # SubnetId:
+      #   Fn::ImportValue: webSubnetAZ1SubnetId
+      SubnetId:
+        Fn::ImportValue:
+          Fn::Select:
+            - Ref: PreferredSubnetIndex
+            - Fn::Split:
+                - ","
+                - Ref: SubnetExportNames
+      SecurityGroupIds:
+        - Ref: InstanceSecurityGroup
+      Tags:
+        - Key: Name
+          Value:
+            Fn::Sub: ${InstanceName}-${AWS::AccountId}-${AWS::Region}
+        - Key: Owner
+          Value:
+            Ref: Owner
+      Monitoring:
+        Fn::If:
+          - MonitoringEnabled
+          - true
+          - false
+      # UserData:
+      #   Fn::Base64:
+      #     Fn::Sub:
+      #       - |
+      #         #!/bin/bash
+      #         set -euxo pipefail
+      #         hostnamectl set-hostname ${InstanceName}-${Environment}
+      #         export APP_SECRET='{{resolve:secretsmanager:${TrainingSecretId}:SecretString:password}}'
+      #         /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource Ec2Instance --region ${AWS::Region} --configsets default
+      #         /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource Ec2Instance --region ${AWS::Region}
+      #       - TrainingSecretId:
+      #           Ref: TrainingAppSecret
+
+  TrainingNestedStack:
+    Type: AWS::CloudFormation::Stack
+    Condition: UseNestedStackExample
+    Properties:
+      TemplateURL:
+        Ref: NestedStackTemplateUrl
+      TimeoutInMinutes: 10
+      Tags:
+        - Key: ParentStack
+          Value:
+            Ref: AWS::StackName
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  TrainingCustomResource:
+    Type: Custom::TrainingExample
+    Condition: UseCustomResourceExample
+    Properties:
+      ServiceToken:
+        Ref: CustomResourceServiceToken
+      RequestContext:
+        Fn::Sub: ${AWS::StackName}-${AWS::Region}-${Environment}
+
+#Mappings Added
+Mappings:
+  RegionToInstanceType:
+    ap-southeast-2:
+      InstanceType: t3.micro
+
+Rules:
+  ProductionRequiresBackupExample:
+    Assertions:
+      - Assert:
+          Fn::Or:
+            - Fn::Not:
+                - Fn::Equals:
+                    - Ref: Environment
+                    - Prod
+            - Fn::Equals:
+                - Ref: CreateBackupResources
+                - "true"
+        AssertDescription: Production deployments must enable the backup example.
+
+  NestedStackUrlRequiredWhenEnabled:
+    Assertions:
+      - Assert:
+          Fn::Or:
+            - Fn::Equals:
+                - Ref: EnableNestedStackExample
+                - "false"
+            - Fn::Not:
+                - Fn::Equals:
+                    - Ref: NestedStackTemplateUrl
+                    - ""
+        AssertDescription: Provide a nested stack template URL when the nested stack example is enabled.
+
+  CustomResourceTokenRequiredWhenEnabled:
+    Assertions:
+      - Assert:
+          Fn::Or:
+            - Fn::Equals:
+                - Ref: EnableCustomResourceExample
+                - "false"
+            - Fn::Not:
+                - Fn::Equals:
+                    - Ref: CustomResourceServiceToken
+                    - ""
+        AssertDescription: Provide a Lambda service token ARN when the custom resource example is enabled.
+
+Outputs:
+  InstanceId:
+    Description: EC2 instance ID
+    Value:
+      Ref: Ec2Instance
+    Export:
+      Name:
+        Fn::Sub: ${AWS::StackName}-InstanceId
+
+  PrivateIp:
+    Description: Private IP address of the EC2 instance
+    Value:
+      Fn::GetAtt:
+        - Ec2Instance
+        - PrivateIp
+
+  SecurityGroupId:
+    Description: Security group attached to the EC2 instance
+    Value:
+      Ref: InstanceSecurityGroup
+
+  Region:
+    Description: AWS region used for the deployment
+    Value:
+      Ref: AWS::Region
+
+  AccountId:
+    Description: AWS account where stack is deployed
+    Value:
+      Ref: AWS::AccountId
+
+  AvailableAzs:
+    Description: Comma-separated list of availability zones in the region
+    Value:
+      Fn::Join:
+        - ","
+        - Fn::GetAZs: ""
+
+  Partition:
+    Description: AWS partition used for ARN construction
+    Value:
+      Ref: AWS::Partition
+
+  StackId:
+    Description: AWS Stack id
+    Value:
+      Ref: AWS::StackId
+
+  StackName:
+    Description: AWS Stack Name
+    Value:
+      Ref: AWS::StackName
+
+  ImportedSubnetExportName:
+    Description: Subnet export name selected through Split and Select
+    Value:
+      Fn::Select:
+        - Ref: PreferredSubnetIndex
+        - Fn::Split:
+            - ","
+            - Ref: SubnetExportNames
+
+  TrainingSecretArn:
+    Description: ARN of the secret used for the dynamic reference example
+    Value:
+      Ref: TrainingAppSecret
+
+  # TrainingConfigurationParameterName:
+  #   Description: Name of the example SSM parameter created by the stack
+  #   Value:
+  #     Ref: TrainingConfigurationParameter

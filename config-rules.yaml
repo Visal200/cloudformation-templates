@@ -1,0 +1,94 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: AWS Config Managed Rule - EC2 Instance Should Not Have Public IP
+
+Resources:
+  EC2NoPublicIPRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ec2-no-public-ip
+      Description: Checks Whether EC2 Instances have public IPV4 address.
+      Source:
+        Owner: AWS
+        SourceIdentifier: EC2_INSTANCE_NO_PUBLIC_IP
+
+  #Incoming SSH Rule Disabled
+  IncomingSSHRuleDisabled:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: incoming-ssh-disabled
+      Description: Checks Whether Incoming SSH is Disabled.
+      Source:
+        Owner: AWS
+        SourceIdentifier: INCOMING_SSH_DISABLED
+
+  IAMUserNoPoliciesRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: iam-user-no-policies-check
+      Description: Checks whether IAM users have policies attached directly.
+      Source:
+        Owner: AWS
+        SourceIdentifier: IAM_USER_NO_POLICIES
+
+  IAMConsoleMFAEnabledRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: iam-console-mfa-enabled
+      Description: Checks whether IAM users with console access have MFA enabled.
+      Source:
+        Owner: AWS
+        SourceIdentifier: MFA_ENABLED_FOR_IAM_CONSOLE_ACCESS
+
+  S3BucketPublicReadRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: s3-bucket-public-read-prohibited
+      Description: Checks that S3 buckets do not allow public read access.
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_PUBLIC_READ_PROHIBITED
+
+  S3BucketPublicWriteRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: s3-bucket-public-write-prohibited
+      Description: Checks that S3 buckets do not allow public write access.
+      Source:
+        Owner: AWS
+        SourceIdentifier: S3_BUCKET_PUBLIC_WRITE_PROHIBITED
+
+  EncryptedVolumesRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: encrypted-volumes
+      Description: Checks whether Amazon EBS volumes are encrypted.
+      Source:
+        Owner: AWS
+        SourceIdentifier: ENCRYPTED_VOLUMES
+
+  CloudTrailEnabledRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: cloudtrail-enabled
+      Description: Checks whether AWS CloudTrail is enabled.
+      Source:
+        Owner: AWS
+        SourceIdentifier: CLOUD_TRAIL_ENABLED
+
+  EC2InstanceProfileAttachedRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ec2-instance-profile-attached
+      Description: Checks whether EC2 instances have an IAM instance profile attached.
+      Source:
+        Owner: AWS
+        SourceIdentifier: EC2_INSTANCE_PROFILE_ATTACHED
+
+  EC2IMDSv2CheckRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ec2-imdsv2-check
+      Description: Checks whether EC2 instances are configured to use Instance Metadata Service Version 2 (IMDSv2).
+      Source:
+        Owner: AWS
+        SourceIdentifier: EC2_IMDSV2_CHECK
