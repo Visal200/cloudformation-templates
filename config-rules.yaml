@@ -92,3 +92,12 @@ Resources:
       Source:
         Owner: AWS
         SourceIdentifier: EC2_IMDSV2_CHECK
+
+  EC2DetailedMonitoringRule:
+    Type: AWS::Config::ConfigRule
+    Properties:
+      ConfigRuleName: ec2-instance-detailed-monitoring-enabled
+      Description: Check whether EC2 detailed monitoring enabled or not 
+      Source:
+        Owner:  AWS
+        SourceIdentifier: EC2_INSTANCE_DETAILED_MONITORING_ENABLED
